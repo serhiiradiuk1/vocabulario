@@ -7,6 +7,7 @@ Spanish vocabulary app with two ways to study — **flashcards** and a **sortabl
 - Students can edit or delete their own words; teachers can edit or delete any word
 - Each person's "Still practicing" / "Got it" progress is private and syncs across devices
 - Filter by topic and by status, search, and sort the list by Spanish, English, topic, status or date added
+- **Homework**: teachers build assignments from blocks, students do them on one page, teachers review (see below)
 - Static site (plain HTML/CSS/JS, no build step) — hosts for free on GitHub Pages
 
 ## Setup
@@ -16,7 +17,8 @@ Spanish vocabulary app with two ways to study — **flashcards** and a **sortabl
 1. Create a project at <https://supabase.com> (the free tier is enough).
 2. Open **SQL Editor** and run, in this order:
    1. `supabase/migrations/0001_init.sql` — tables, row-level security, role protection
-   2. `supabase/seed.sql` — the original 357 words (optional, run it once)
+   2. `supabase/migrations/0002_homework.sql` — homework (blocks, answer keys, submissions, review)
+   3. `supabase/seed.sql` — the original 357 words (optional, run it once)
 3. **Authentication → Providers → Email**: for quick testing you can turn off *Confirm email*.
    Leave it on if you want people to verify their address.
 
@@ -71,6 +73,35 @@ calls the API directly:
 
 Signed-out visitors can't read anything.
 
+## Homework
+
+Open the **Homework** tab.
+
+**Teacher** — *New homework*: title, instructions, deadline, who gets it (all students or a selection), then add blocks:
+
+| Block | What the student does | Checked |
+|-------|----------------------|---------|
+| Material | reads text / opens a link / watches a YouTube video / sees an image (by URL) | – |
+| Vocabulary | studies chosen words with flashcards; done when all are marked "Got it" | automatically |
+| Question | picks one option | automatically |
+| Fill in the gaps | types words into `___` gaps in a sentence (alternatives: `como / comer`) | automatically |
+| Written answer | writes text | by the teacher (points + comment) |
+| Checklist | ticks "I did it" | automatically |
+
+Settings: points on/off, whether students may edit after submitting, whether late work is accepted,
+and when correct answers become visible (after the deadline / right after submitting / never).
+*Duplicate* copies a homework (including its answers) as a new draft. Drafts are invisible to students.
+
+**Student** — sees assigned homework with deadlines, answers on one page (autosaved), presses *Submit*.
+Auto-checked parts are scored immediately; written answers wait for the teacher.
+
+**Review** — *Results* shows who handed in, who did not, and scores. Open a submission, give points and
+comments, then *Mark as reviewed* or *Send back for changes* (the student can then fix and submit again).
+
+Answer keys live in a separate table that only teachers can read; students get them from
+`homework_answer_keys()` only when the settings allow it. Gap answers ignore capitals, extra spaces and
+surrounding punctuation, but accents must match (`está` ≠ `esta`).
+
 ## Project layout
 
 ```
@@ -78,7 +109,11 @@ index.html                       page shell
 css/style.css                    styles (light + dark)
 js/config.js                     your Supabase URL + anon key
 js/app.js                        the app (auth, flashcards, list, add/edit words)
+js/homework.js                   homework: data layer, student view, teacher list
+js/homework-builder.js           homework builder (teachers)
+js/homework-review.js            results table + review screen (teachers)
 supabase/migrations/0001_init.sql  schema + security
+supabase/migrations/0002_homework.sql  homework tables, RLS, grading + review functions
 supabase/seed.sql                the original 357 words
 ```
 

@@ -28,7 +28,7 @@
 
   const WORD_SELECT = 'id, es, en, ctx, topic, added_by, created_at, author:profiles!added_by(display_name)';
   const STATUS_LABEL = { new: 'New', review: 'Practicing', good: 'Mastered' };
-  const LS = { topics: 'vocab-topics-v2', view: 'vocab-view-v2', theme: 'vocab-theme' };
+  const LS = { topics: 'vocab-topics-v2', view: 'vocab-view-v2', theme: 'vocab-theme', section: 'vocab-section' };
 
   const cfg = window.APP_CONFIG || {};
   const configured = !!(cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY &&
@@ -43,6 +43,7 @@
     profile: null,
     words: [],
     progress: new Map(),     // word_id -> 'review' | 'good'
+    section: 'words',        // words | homework
     view: 'cards',           // cards | list
     filter: 'all',           // all | new | review | good
     topics: new Set(TOPIC_KEYS),
@@ -509,6 +510,26 @@
       h('button', { class: 'link-btn', type: 'button', text: 'Sign out', onclick: signOut })
     );
 
+    const inHw = state.section === 'homework' && !!window.VocabHW;
+    app.classList.toggle('wide', inHw);
+    header.querySelector('.topics-btn').classList.toggle('hidden', inHw);
+
+    const sectionTabs = h('div', { class: 'section-tabs', role: 'tablist' },
+      h('button', { type: 'button', role: 'tab', class: !inHw ? 'active' : '', 'aria-selected': !inHw ? 'true' : 'false',
+        text: 'Words', onclick: function () { setSection('words'); } }),
+      window.VocabHW ? h('button', { type: 'button', role: 'tab', class: inHw ? 'active' : '', 'aria-selected': inHw ? 'true' : 'false',
+        onclick: function () { setSection('homework'); } },
+        'Homework ', h('span', { class: 'tab-badge hidden', id: 'hw-badge' })) : null
+    );
+
+    if (inHw) {
+      const hwBody = h('div', { id: 'body' });
+      mount(header, whoami, sectionTabs, hwBody);
+      updateBadge();
+      window.VocabHW.render(hwBody);
+      return;
+    }
+
     const toolbar = h('div', { class: 'toolbar' },
       h('div', { class: 'view-toggle', role: 'tablist' },
         h('button', { type: 'button', role: 'tab', 'aria-selected': state.view === 'cards' ? 'true' : 'false',
@@ -521,9 +542,25 @@
 
     const filters = h('div', { class: 'filters', id: 'filters' });
     const body = h('div', { id: 'body' });
-    mount(header, whoami, toolbar, filters, body);
+    mount(header, whoami, sectionTabs, toolbar, filters, body);
+    updateBadge();
     renderFilters();
     if (state.view === 'list') renderList(body); else renderCards(body);
+  }
+
+  function setSection(sec) {
+    if (state.section === sec) return;
+    state.section = sec;
+    lsSet(LS.section, sec);
+    renderShell();
+  }
+
+  function updateBadge() {
+    const el = document.getElementById('hw-badge');
+    if (!el || !window.VocabHW) return;
+    const n = window.VocabHW.badgeCount();
+    el.textContent = n ? String(n) : '';
+    el.classList.toggle('hidden', !n);
   }
 
   function renderFilters() {
@@ -732,6 +769,7 @@
       state.words = results[0];
       state.progress = results[1];
       syncOrder();
+      if (window.VocabHW) await window.VocabHW.refresh(true);
       renderShell();
       toast('Up to date');
     } catch (err) {
@@ -760,11 +798,17 @@
         } catch (e) { /* keep default */ }
       }
       state.view = lsGet(LS.view) === 'list' ? 'list' : 'cards';
+      state.section = (lsGet(LS.section) === 'homework' && window.VocabHW) ? 'homework' : 'words';
       state.filter = 'all';
       state.query = '';
       state.screen = 'main';
       rebuildOrder();
       renderShell();
+      if (window.VocabHW) {
+        window.VocabHW.loadSummary().then(function () {
+          if (token === state.loadToken && state.screen === 'main') updateBadge();
+        });
+      }
     } catch (err) {
       if (token !== state.loadToken) return;
       state.screen = 'error';
@@ -785,7 +829,9 @@
     state.progress = new Map();
     state.order = [];
     state.cursor = 0;
+    if (window.VocabHW) window.VocabHW.reset();
     closeModal();
+    app.classList.remove('wide');
   }
 
   async function signOut() {
@@ -950,7 +996,7 @@
   // -------------------------------------------------------------------- keys
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && activeModal) { activeModal.close(); return; }
-    if (state.screen !== 'main' || state.view !== 'cards' || activeModal) return;
+    if (state.screen !== 'main' || state.section !== 'words' || state.view !== 'cards' || activeModal) return;
     const tag = (e.target && e.target.tagName) || '';
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     if (e.key === 'ArrowRight') { nextCard(); }
@@ -961,6 +1007,14 @@
       if (card) card.classList.toggle('flipped');
     }
   });
+
+  // ----------------------------------------------- API for the homework modules
+  window.VocabCore = {
+    state: state, h: h, put: put, putReplace: putReplace, toast: toast, friendlyError: friendlyError,
+    openModal: openModal, closeModal: closeModal, isTeacher: isTeacher, TOPICS: TOPICS, topicInfo: topicInfo,
+    wordById: wordById, statusOf: statusOf, setStatus: setStatus, shuffled: shuffled,
+    renderShell: renderShell, updateBadge: updateBadge
+  };
 
   // -------------------------------------------------------------------- init
   function init() {
