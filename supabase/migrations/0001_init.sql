@@ -48,6 +48,9 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
+-- Only the trigger should run this; it must not be callable through the API.
+revoke all on function public.handle_new_user() from public, anon, authenticated;
+
 -- Profiles for users that already existed before this migration.
 insert into public.profiles (id, display_name)
 select id, left(split_part(coalesce(email, ''), '@', 1), 60)
